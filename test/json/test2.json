@@ -1,0 +1,24 @@
+{
+	"name": "Mischa Reitsma",
+	"has_pets:": true,
+	"pets": [
+		{
+			"name": "Kuro",
+			"type": "cat"
+		},
+		{
+			"name": "Hikari",
+			"type": "cat",
+			"likes_tea": true
+		},
+		{
+			"name": "Wookie",
+			"type": "dog",
+			"has_teeth": false
+		},
+		{
+			"name": "Goonie",
+			"type": "dog"
+		}
+	]
+}
