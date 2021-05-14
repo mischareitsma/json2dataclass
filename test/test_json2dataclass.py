@@ -5,18 +5,23 @@ from json2dataclass import generate_code_from_json_string
 JSON_PATH = pathlib.Path(__file__).parent / 'json'
 PY_PATH = pathlib.Path(__file__).parent / 'py'
 
+NUMBER_OF_TEST_JSONS = 5
+
 
 class TestJson2DataClass(unittest.TestCase):
 
-    def test_test1_json(self):
-        json_content=read_json('test1.json')
-        py_content = read_py('test1.py')
+    def test_generated_python_code(self):
 
-        gen_py = generate_code_from_json_string(json_content)
+        self.maxDiff = None
 
-        print(gen_py)
+        for i in range(NUMBER_OF_TEST_JSONS):
+            with self.subTest(i=i):
+                json_content=read_json(f'test{i+1}.json')
+                py_content = read_py(f'test{i+1}.py')
 
-        self.assertEqual(py_content, gen_py)
+                gen_py = generate_code_from_json_string(json_content)
+
+                self.assertEqual(py_content, gen_py)
 
 
 def read_json(json_name: str) -> str:
