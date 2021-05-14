@@ -1,6 +1,6 @@
 import pathlib
 import unittest
-from json2dataclass import generate_dataclasses_from_json
+from json2dataclass import generate_code_from_json_string
 
 JSON_PATH = pathlib.Path(__file__).parent / 'json'
 PY_PATH = pathlib.Path(__file__).parent / 'py'
@@ -12,7 +12,7 @@ class TestJson2DataClass(unittest.TestCase):
         json_content=read_json('test1.json')
         py_content = read_py('test1.py')
 
-        gen_py = generate_code_from_json(json_content)
+        gen_py = generate_code_from_json_string(json_content)
 
         print(gen_py)
 

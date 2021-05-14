@@ -21,6 +21,88 @@ class JSONType(enum.Enum):
     NULL = 6
 
 
+class TypeTranslator:
+
+    json2type = {}
+    type2json = {}
+
+    # TODO If this method is only used for code generation, return type should
+    # be str, not a str | type. Other way around, jsontype from type could use
+    # Python type as input. But this does break a nice symmetry.
+    @classmethod
+    def get_type_from_json_type(cls, json_type: JSONType) -> Union[str, type]:
+        return cls.json2type.get(json_type, '')
+
+    @classmethod
+    def get_json_type_from_type(cls, _type: Union[str, type]) -> JSONType:
+        return cls.type2json.get(type, '')
+
+
+class PythonTypeTranslator(TypeTranslator):
+
+    @classmethod
+    def get_type_from_json_type(cls, json_type: JSONType) -> str:
+
+        if json_type is JSONType.STRING:
+            return 'str'
+
+        if json_type is JSONType.NUMBER:
+            return 'Union[int, float]'
+
+        if json_type is JSONType.OBJECT:
+            # TODO: This should have an optional type that can be passed
+            # to the method.
+            return 'object'
+
+        if json_type is JSONType.ARRAY:
+            # TODO: This should also use the optional type, and return list[type]
+            return 'list'
+
+        if json_type is JSONType.BOOLEAN:
+            return 'bool'
+
+        if json_type is JSONType.NULL:
+            return 'object'
+
+        # Default to 'Any'
+        return object
+
+    @classmethod
+    def get_json_type_from_type(cls, _type: Union[str, type]) -> JSONType:
+
+        if isinstance(_type, str):
+            return cls._json_type_from_string(_type)
+
+        return cls._json_type_from_python_type(_type)
+
+    @classmethod
+    def _json_type_from_python_type(cls, _type: type) -> JSONType:
+        if _type is str:
+            return JSONType.STRING
+
+        if _type in [float, int]:
+            return JSONType.NUMBER
+
+        # The object is the 'default'? Handle later? If not, insert here
+
+        if _type is list:
+            return JSONType.ARRAY
+
+        if _type is bool:
+            return JSONType.BOOLEAN
+
+        if _type is type(None):
+            return JSONType.NULL
+
+        return JSONType.OBJECT
+
+    @classmethod
+    def _json_type_from_string(cls, _type: str) -> JSONType:
+        # TODO Not implemented? Or just try to convert to python type?
+        # Or make some guess on what the strings can be (type.__name__?)
+        return JSONType.NULL
+
+
 class JSONAttribute:
     """Class representing a JSON attribute.
     """
@@ -67,9 +149,6 @@ class JSONAttribute:
 
 class JSONParser:
 
-    class JSONObjectInJSONArrayNotSupported(Exception):
-        pass
-
     def __init__(self, in_json: str, is_file: bool = False):
         """Initialize the JSON parser.
 
@@ -90,7 +169,8 @@ class JSONParser:
 
         # Used if the root is an array, might need some different logic in
         # that case.
-        self.root_is_array: boolean = False
+        self.root_is_array: bool = False
+        self.is_parsed: bool = False
 
         if is_file:
             with open(in_json, 'r') as f:
@@ -127,7 +207,9 @@ class JSONPythonDictParser(JSONParser):
                 self._parse_object(self.root, entry)
         else:
             self._parse_object(self.root, self.loaded_json)
-    
+        
+        self.is_parsed = True
+
     def _parse_object(self, current: JSONAttribute, json_object: dict):
         for k, v in json_object.items():
             self._parse_element(current, k, v)
@@ -173,10 +255,11 @@ class JSONPythonDictParser(JSONParser):
 
 
 class CodeGenerator:
-    
-    def __init__(self):
-        self.type_translator: TypeTranslator = None
-        self.json_parser: JSONParser = None
+
+    type_translator: TypeTranslator = None
+
+    def __init__(self, parser: JSONParser = None):
+        self.parser: JSONParser = parser
 
     def generate_code(self) -> str:
         """Generate code.
@@ -195,96 +278,102 @@ class CodeGenerator:
 
 
 class PythonCodeGenerator(CodeGenerator):
-    pass
+
+    type_translator: TypeTranslator = PythonTypeTranslator
+
+    def __init__(self, parser: JSONParser = None):
+        super().__init__(parser)
+
+        # TODO: With more fancy typing, might do more, but for now
+        # just hardcode these two here, makes it easier.
+        self.imports: list[str] = [
+            'from dataclasses import dataclass',
+            'from typing import Union'
+        ]
+        self.classes: dict[str, list[str]] = {} # class : [lines]
+
+        # TODO Might be usefull, might need rules, might need class name
+        # generator, which can be supplied at runtime?
+        self.class_names: dict[str, str] = {} # Mapping attr_name: class_name
+
+        # TODO: Should go to parent? split generate and write code methods?
+        self.code: list[str] = []
+
+    def generate_code(self):
+        self._generate_classes()
+        self._generate_code()
+        return '\n'.join(self.code)
+
+    def _generate_classes(self):
+        # TODO: Seems redundant, the name, could go maybe
+        self._generate_class(self.parser.root.name, self.parser.root)
+    
+    def _generate_class(self, class_name: str, attr: JSONAttribute):
+        # Can only be called with object attribute
+        if not attr.type is JSONType.OBJECT:
+            return
+
+        self.classes[class_name] = []
+
+        for name, child in sorted(attr.children.items()):
+            if child.type is JSONType.OBJECT:
+                self._generate_class(f'{class_name}_{child.name}', child)
+            if child.type is JSONType.ARRAY and \
+                child.children["content"].type is JSONType.OBJECT:
+                self._generate_class(
+                    f'{class_name}_{child.name}',
+                    child.children["content"]
+                )
+
+            self.classes[class_name].append(self._get_attribute_line(child))
+
+    def _get_attribute_line(self, attr: JSONAttribute) -> str:
+
+        line = f'{attr.name}: '
+        line += f'{self.type_translator.get_type_from_json_type(attr.type)}'
+
+        if attr.type is JSONType.ARRAY:
+            line += f'['
+            line += self.type_translator.get_type_from_json_type(
+                attr.children["content"].type)
+            line += ']'
+
+        return line
+
+    # def get_class_name(self, attr_name: str) -> str:
+    #     if not attr_name in self.class_names:
+    def _generate_code(self):
+        for line in self.imports:
+            self.code.append(line)
+
+        for class_name, lines in self.classes.items():
+            self.code += ['', '']
+            self.code.append('@dataclass')
+            self.code.append(f'class {class_name}:')
+            self.code.append(f'    """{class_name} dataclass"""')
+            self.code.append('')
+            for line in lines:
+                self.code.append(f'    {line}')
+
+        self.code.append('')
 
 
-class TypeTranslator:
+# TODO: Need the language etc. as input here
+def generate_code_from_json_string(json: str) -> str:
+    jp = JSONPythonDictParser(json, False)
+    jp.parse()
 
-    json2type = {}
-    type2json = {}
-
-    # TODO If this method is only used for code generation, return type should
-    # be str, not a str | type. Other way around, jsontype from type could use
-    # Python type as input. But this does break a nice symmetry.
-    @classmethod
-    def get_type_from_json_type(cls, json_type: JSONType) -> Union[str, type]:
-        return cls.json2type.get(json_type, '')
-
-    @classmethod
-    def get_json_type_from_type(cls, _type: Union[str, type]) -> JSONType:
-        return cls.type2json.get(type, '')
-
-class PythonTypeTranslator(TypeTranslator):
-
-    @classmethod
-    def get_type_from_json_type(cls, json_type: JSONType) -> type:
-
-        if json_type is JSONType.STRING:
-            return str
-
-        if json_type is JSONType.NUMBER:
-            return Number
-
-        if json_type is JSONType.OBJECT:
-            # TODO: This should have an optional type that can be passed
-            # to the method.
-            return object
-
-        if json_type is JSONType.ARRAY:
-            return list
-
-        if json_type is JSONType.BOOLEAN:
-            return bool
-
-        if json_type is JSONType.NULL:
-            return object
-
-        # Default to 'Any'
-        return object
-
-    @classmethod
-    def get_json_type_from_type(cls, _type: Union[str, type]) -> JSONType:
-
-        if isinstance(_type, str):
-            return cls._json_type_from_string(_type)
-
-        return cls._json_type_from_python_type(_type)
-
-    @classmethod
-    def _json_type_from_python_type(cls, _type: type) -> JSONType:
-        if _type is str:
-            return JSONType.STRING
-
-        if _type in [float, int]:
-            return JSONType.NUMBER
-
-        # The object is the 'default'? Handle later? If not, insert here
-
-        if _type is list:
-            return JSONType.ARRAY
-
-        if _type is bool:
-            return JSONType.BOOLEAN
-
-        if _type is type(None):
-            return JSONType.NULL
-
-        return JSONType.OBJECT
-
-    @classmethod
-    def _json_type_from_string(cls, _type: str) -> JSONType:
-        # TODO Not implemented? Or just try to convert to python type?
-        # Or make some guess on what the strings can be (type.__name__?)
-        return JSONType.NULL
-
-
-def generate_code_from_json(json: str) -> str:
-    return json
+    pcg = PythonCodeGenerator(jp)
+    return pcg.generate_code()
 
 
 if __name__ == "__main__":
-    for json_file in ['todoist-task.json', 'test1.json', 'test2.json']:
+    for json_file in ['todoist-task.json', 'test2.json', 'test1.json']:
         jp = JSONPythonDictParser(f'test/json/{json_file}', True)
         jp.parse()
         print(jp.get_root_attribute().__repr__())
         print('')
+        print('-'*80)
+        pcg = PythonCodeGenerator(jp)
+        print(pcg.generate_code())
+        print('-'*80)

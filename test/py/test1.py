@@ -1,9 +1,10 @@
 from dataclasses import dataclass
-from numbers import Number
+from typing import Union
 
 
 @dataclass
-class DataClass1:
-    """DataClass1"""
+class root:
+    """root dataclass"""
+
+    age: Union[int, float]
     name: str
-    age: Number
