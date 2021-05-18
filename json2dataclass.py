@@ -2,13 +2,14 @@ import enum
 import json
 import pathlib
 
-from numbers import Number
 from typing import Any, Union
 
 """JSON Classes
 
 This section contains all the classes that deal with the JSON objects.
 """
+
+
 class JSONType(enum.Enum):
     """Valid JSON Types.
     """
@@ -23,25 +24,26 @@ class JSONType(enum.Enum):
 
 class TypeTranslator:
 
+    NoneType = type(None)
+
     json2type = {}
     type2json = {}
 
-    # TODO If this method is only used for code generation, return type should
-    # be str, not a str | type. Other way around, jsontype from type could use
-    # Python type as input. But this does break a nice symmetry.
     @classmethod
-    def get_type_from_json_type(cls, json_type: JSONType) -> Union[str, type]:
+    def get_type_from_json_type(cls, json_type: JSONType,
+                                obj_type: str = None) -> str:
         return cls.json2type.get(json_type, '')
 
     @classmethod
     def get_json_type_from_type(cls, _type: Union[str, type]) -> JSONType:
-        return cls.type2json.get(type, '')
+        return cls.type2json.get(_type, '')
 
 
 class PythonTypeTranslator(TypeTranslator):
 
     @classmethod
-    def get_type_from_json_type(cls, json_type: JSONType) -> str:
+    def get_type_from_json_type(cls, json_type: JSONType,
+                                obj_type: str = None) -> str:
 
         if json_type is JSONType.STRING:
             return 'str'
@@ -55,7 +57,8 @@ class PythonTypeTranslator(TypeTranslator):
             return 'object'
 
         if json_type is JSONType.ARRAY:
-            # TODO: This should also use the optional type, and return list[type]
+            # TODO: This should also use the optional type,
+            # and return list[type]
             return 'list'
 
         if json_type is JSONType.BOOLEAN:
@@ -91,7 +94,7 @@ class PythonTypeTranslator(TypeTranslator):
         if _type is bool:
             return JSONType.BOOLEAN
 
-        if _type is type(None):
+        if _type is cls.NoneType:
             return JSONType.NULL
 
         return JSONType.OBJECT
@@ -107,12 +110,12 @@ class JSONAttribute:
     """Class representing a JSON attribute.
     """
 
-    def __init__(self, name:str, json_type: JSONType):
+    def __init__(self, name: str, json_type: JSONType):
         self.name: str = name
         self.type: JSONType = json_type
         # name: Attribute, name="content" special case for ARRAY
         self.children: dict[str, JSONAttribute] = {}
-    
+
     def __repr__(self):
         s = f'"{self.name}" : '
         if self.type is JSONType.OBJECT:
@@ -189,7 +192,7 @@ class JSONParser:
 
 
 class JSONPythonDictParser(JSONParser):
-    
+
     def __init__(self, in_json: str, is_file: bool = False):
         super().__init__(in_json, is_file)
 
@@ -207,7 +210,7 @@ class JSONPythonDictParser(JSONParser):
                 self._parse_object(self.root, entry)
         else:
             self._parse_object(self.root, self.loaded_json)
-        
+
         self.is_parsed = True
 
     def _parse_object(self, current: JSONAttribute, json_object: dict):
@@ -227,7 +230,7 @@ class JSONPythonDictParser(JSONParser):
 
         # If the attribute is already part of the parent, and not an object or
         # array, skip
-        if name in parent.children and not attr_type is JSONType.OBJECT:
+        if name in parent.children and attr_type is not JSONType.OBJECT:
             return
 
         # If object, create new empty object and call parse object
@@ -290,11 +293,11 @@ class PythonCodeGenerator(CodeGenerator):
             'from dataclasses import dataclass',
             'from typing import Union'
         ]
-        self.classes: dict[str, list[str]] = {} # class : [lines]
+        self.classes: dict[str, list[str]] = {}  # class : [lines]
 
         # TODO Might be usefull, might need rules, might need class name
         # generator, which can be supplied at runtime?
-        self.class_names: dict[str, str] = {} # Mapping attr_name: class_name
+        self.class_names: dict[str, str] = {}  # Mapping attr_name: class_name
 
         # TODO: Should go to parent? split generate and write code methods?
         self.code: list[str] = []
@@ -307,10 +310,10 @@ class PythonCodeGenerator(CodeGenerator):
     def _generate_classes(self):
         # TODO: Seems redundant, the name, could go maybe
         self._generate_class(self.parser.root.name, self.parser.root)
-    
+
     def _generate_class(self, class_name: str, attr: JSONAttribute):
         # Can only be called with object attribute
-        if not attr.type is JSONType.OBJECT:
+        if attr.type is not JSONType.OBJECT:
             return
 
         self.classes[class_name] = []
@@ -319,7 +322,7 @@ class PythonCodeGenerator(CodeGenerator):
             if child.type is JSONType.OBJECT:
                 self._generate_class(f'{class_name}_{child.name}', child)
             if child.type is JSONType.ARRAY and \
-                child.children["content"].type is JSONType.OBJECT:
+               child.children["content"].type is JSONType.OBJECT:
                 self._generate_class(
                     f'{class_name}_{child.name}',
                     child.children["content"]
@@ -333,7 +336,7 @@ class PythonCodeGenerator(CodeGenerator):
         line += f'{self.type_translator.get_type_from_json_type(attr.type)}'
 
         if attr.type is JSONType.ARRAY:
-            line += f'['
+            line += '['
             line += self.type_translator.get_type_from_json_type(
                 attr.children["content"].type)
             line += ']'
