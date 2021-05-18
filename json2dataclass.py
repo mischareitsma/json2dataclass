@@ -56,14 +56,10 @@ class PythonTypeTranslator(TypeTranslator):
             return 'Union[int, float]'
 
         if json_type is JSONType.OBJECT:
-            # TODO: This should have an optional type that can be passed
-            # to the method.
-            return 'object'
+            return obj_type if obj_type else 'object'
 
         if json_type is JSONType.ARRAY:
-            # TODO: This should also use the optional type,
-            # and return list[type]
-            return 'list'
+            return f'list[{obj_type}]' if obj_type else 'list'
 
         if json_type is JSONType.BOOLEAN:
             return 'bool'
@@ -114,9 +110,16 @@ class JSONAttribute:
     """Class representing a JSON attribute.
     """
 
-    def __init__(self, name: str, json_type: JSONType):
+    def __init__(self, name: str, json_type: JSONType,
+                 optional_type: str = ''):
         self.name: str = name
         self.type: JSONType = json_type
+
+        # The optional type is used when generating code from JSONAttributes.
+        # TODO: Should there be a <Language>Attribute class, which has
+        # a JSONAttribute as field, and have this additional info?
+        self.optional_type: str = optional_type
+
         # name: Attribute, name="content" special case for ARRAY
         self.children: dict[str, JSONAttribute] = {}
 
@@ -135,23 +138,6 @@ class JSONAttribute:
             s += str(self.type)
         s += ',\n'
         return s
-
-
-# TODO: These are optional, using JSONType vs using object type is a choice
-# at this point. Went with using self.type for now. Code generation should
-# ignore children if type not on [OBJECT, ARRAY]
-# class JSONObject(JSONAttribute):
-
-#     def __init__(self, name: str, json_type: JSONType):
-#         super().__init__(name, json_type)
-#         self.children: list[JSONAttribute]
-
-
-# class JSONArray(JSONAttribute):
-
-#     def __init__(self, name: str, json_type: JSONType):
-#         super().__init__(name, json_type)
-#         self.child: JSONAttribute
 
 
 class JSONParser:
@@ -206,9 +192,11 @@ class JSONPythonDictParser(JSONParser):
     def parse(self):
         if self.root_is_array:
             for entry in self.loaded_json:
-                # At this stage, we need object, or else there is not
-                # much to parse, for now simple continue, might change to
-                # an error at a latest stage
+                # At this stage, we need objects, or else there might be
+                # multiple root objects (e.g. array of arrays). For now simple
+                # continue, might change to an error at a latest stage, as
+                # this tool is not meant for (or mature enough to deal with) an
+                # awkward JSON that start with nested arrays.
                 if not isinstance(entry, dict):
                     continue
                 self._parse_object(self.root, entry)
@@ -305,6 +293,7 @@ class PythonCodeGenerator(CodeGenerator):
 
         # TODO: Should go to parent? split generate and write code methods?
         self.code: list[str] = []
+        self.types: list[str] = []
 
     def generate_code(self):
         self._generate_classes()
@@ -337,7 +326,7 @@ class PythonCodeGenerator(CodeGenerator):
     def _get_attribute_line(self, attr: JSONAttribute) -> str:
 
         line = f'{attr.name}: '
-        line += f'{self.type_translator.get_type_from_json_type(attr.type)}'
+        line += f'{self.type_translator.get_type_from_json_type(attr.type, attr.name)}'
 
         if attr.type is JSONType.ARRAY:
             line += '['
@@ -347,8 +336,6 @@ class PythonCodeGenerator(CodeGenerator):
 
         return line
 
-    # def get_class_name(self, attr_name: str) -> str:
-    #     if not attr_name in self.class_names:
     def _generate_code(self):
         for line in self.imports:
             self.code.append(line)

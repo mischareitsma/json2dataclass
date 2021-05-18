@@ -12,7 +12,7 @@ class root:
     completed: bool
     content: str
     description: str
-    due: object
+    due: root_due
     id: Union[int, float]
     label_ids: list[Union[int, float]]
     order: Union[int, float]

@@ -6,28 +6,28 @@ from typing import Union
 class root:
     """root dataclass"""
 
-    layerOne: object
+    layerOne: root_layerOne
 
 
 @dataclass
 class root_layerOne:
     """root_layerOne dataclass"""
 
-    layerTwo: object
+    layerTwo: root_layerOne_layerTwo
 
 
 @dataclass
 class root_layerOne_layerTwo:
     """root_layerOne_layerTwo dataclass"""
 
-    layerThree: list[object]
+    layerThree: list[root_layerOne_layerTwo_layerThree]
 
 
 @dataclass
 class root_layerOne_layerTwo_layerThree:
     """root_layerOne_layerTwo_layerThree dataclass"""
 
-    layerFour: object
+    layerFour: root_layerOne_layerTwo_layerThree_layerFour
 
 
 @dataclass
