@@ -16,7 +16,7 @@ class TestJson2DataClass(unittest.TestCase):
 
         for i in range(NUMBER_OF_TEST_JSONS):
             with self.subTest(i=i):
-                json_content=read_json(f'test{i+1}.json')
+                json_content = read_json(f'test{i+1}.json')
                 py_content = read_py(f'test{i+1}.py')
 
                 gen_py = generate_code_from_json_string(json_content)

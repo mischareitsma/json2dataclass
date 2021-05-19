@@ -4,6 +4,10 @@ import pathlib
 
 from typing import Any, Union
 
+
+__version__ = '0.1.0'
+
+
 """JSON Classes
 
 This section contains all the classes that deal with the JSON objects.
