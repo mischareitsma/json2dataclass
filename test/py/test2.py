@@ -8,7 +8,7 @@ class root:
 
     has_pets: bool
     name: str
-    pets: list[object]
+    pets: list[root_pets]
 
 
 @dataclass
